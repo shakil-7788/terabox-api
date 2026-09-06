@@ -6,34 +6,57 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// TeraBox Direct Extraction Endpoint
 app.get('/api/resolve', async (req, res) => {
-    const videoUrl = req.query.url;
+    let videoUrl = req.query.url;
     if (!videoUrl) {
         return res.status(400).json({ error: 'URL is required' });
     }
 
     try {
-        // নতুন আপডেট হওয়া কার্যকরী API Endpoint
-        const response = await axios.get(`https://terabox-dl.qt0.workers.dev/api/get-download?url=${encodeURIComponent(videoUrl)}`, {
+        // ১. Short URL হলে Full URL বের করা
+        const initialRes = await axios.get(videoUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
             },
-            timeout: 10000
+            maxRedirects: 5
         });
-        
-        if (response.data && (response.data.downloadLink || response.data.direct_link)) {
-            const finalLink = response.data.downloadLink || response.data.direct_link;
-            return res.json({
-                success: true,
-                title: response.data.filename || "TeraBox Video",
-                downloadUrl: finalLink,
-                streamUrl: finalLink
-            });
-        } else {
-            return res.status(500).json({ error: "Failed to extract link" });
+
+        const finalUrl = initialRes.request.res.responseUrl || videoUrl;
+        const urlObj = new URL(finalUrl);
+        const surl = urlObj.searchParams.get('surl');
+
+        if (!surl) {
+            return res.status(400).json({ error: 'Invalid TeraBox URL format' });
         }
+
+        // ২. TeraBox Official API থেকে File List আনা
+        const apiRes = await axios.get(`https://www.terabox.com/share/list?app_id=250528&shorturl=${surl}&root=1`, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+                'Referer': finalUrl
+            }
+        });
+
+        if (apiRes.data && apiRes.data.list && apiRes.data.list.length > 0) {
+            const fileData = apiRes.data.list[0];
+            const dlink = fileData.dlink;
+
+            if (dlink) {
+                return res.json({
+                    success: true,
+                    title: fileData.server_filename || "TeraBox Video",
+                    downloadUrl: dlink,
+                    streamUrl: dlink
+                });
+            }
+        }
+
+        return res.status(400).json({ error: 'Could not extract direct video link' });
+
     } catch (error) {
-        return res.status(500).json({ error: "Server error or invalid link" });
+        console.error("Extraction Error:", error.message);
+        return res.status(500).json({ error: 'Server error or TeraBox link restricted' });
     }
 });
 
