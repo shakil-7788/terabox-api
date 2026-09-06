@@ -6,7 +6,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// TeraBox Link Resolver API Endpoint
 app.get('/api/resolve', async (req, res) => {
     const videoUrl = req.query.url;
     if (!videoUrl) {
@@ -14,15 +13,21 @@ app.get('/api/resolve', async (req, res) => {
     }
 
     try {
-        // ফ্রি পাবলিক API-র মাধ্যমে TeraBox Direct Link এক্সট্র্যাক্ট করা
-        const response = await axios.get(`https://terabox-dl.qt0.workers.dev/api/get-download?url=${encodeURIComponent(videoUrl)}`);
-
-        if (response.data && response.data.downloadLink) {
+        // নতুন আপডেট হওয়া কার্যকরী API Endpoint
+        const response = await axios.get(`https://terabox-dl.qt0.workers.dev/api/get-download?url=${encodeURIComponent(videoUrl)}`, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            timeout: 10000
+        });
+        
+        if (response.data && (response.data.downloadLink || response.data.direct_link)) {
+            const finalLink = response.data.downloadLink || response.data.direct_link;
             return res.json({
                 success: true,
                 title: response.data.filename || "TeraBox Video",
-                downloadUrl: response.data.downloadLink,
-                streamUrl: response.data.downloadLink
+                downloadUrl: finalLink,
+                streamUrl: finalLink
             });
         } else {
             return res.status(500).json({ error: "Failed to extract link" });
